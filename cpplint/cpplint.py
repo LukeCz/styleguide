@@ -56,7 +56,7 @@ import unicodedata
 _USAGE = """
 Syntax: cpplint.py [--verbose=#] [--output=vs7] [--filter=-x,+y,...]
                    [--counting=total|toplevel|detailed] [--root=subdir]
-                   [--linelength=digits]
+                   [--linelength=digits] [--stdstream]
         <file> [file] ...
 
   The style guidelines this tries to follow are those in
@@ -133,6 +133,14 @@ Syntax: cpplint.py [--verbose=#] [--output=vs7] [--filter=-x,+y,...]
 
       Examples:
         --extensions=hpp,cpp
+    
+    stdstream
+      This allows to separate errors and normal output into separate streams. 
+      Useful when standard output is to be redirected to /dev/null leaving only
+      errors.
+      
+      Examples:
+        --stdstream
 
     cpplint.py supports per-directory configurations specified in CPPLINT.cfg
     files. CPPLINT.cfg file can contain a number of key=value pairs.
@@ -536,6 +544,10 @@ _line_length = 80
 # This is set by --extensions flag.
 _valid_extensions = set(['cc', 'h', 'cpp', 'cu', 'cuh'])
 
+# Option to separate output streams. Helpful when integrating with make and you want to see only errors, normal ourput redirected to /dev/null
+# This is set by --stdstream flag.
+_std_stream = None
+
 # {str, bool}: a map from error categories to booleans which indicate if the
 # category should be suppressed for every line.
 _global_error_suppressions = {}
@@ -909,7 +921,10 @@ class _CppLintState(object):
     for category, count in self.errors_by_category.iteritems():
       sys.stderr.write('Category \'%s\' errors found: %d\n' %
                        (category, count))
-    sys.stderr.write('Total errors found: %d\n' % self.error_count)
+    stream = sys.stderr
+    if _std_stream:
+      stream = sys.stdout
+    stream.write('Total errors found: %d\n' % self.error_count)
 
 _cpplint_state = _CppLintState()
 
@@ -5902,6 +5917,9 @@ def ProcessConfigOverrides(filename):
           elif name == 'root':
             global _root
             _root = val
+          elif name == 'std_stream':
+            global _std_stream
+            _std_stream = sys.stdout
           else:
             sys.stderr.write(
                 'Invalid configuration option (%s) in file %s\n' %
@@ -6004,7 +6022,10 @@ def ProcessFile(filename, vlevel, extra_check_functions=[]):
         Error(filename, linenum, 'whitespace/newline', 1,
               'Unexpected \\r (^M) found; better to use only \\n')
 
-  sys.stderr.write('Done processing %s\n' % filename)
+  stream = sys.stderr
+  if _std_stream:
+    stream = sys.stdout
+  stream.write('Done processing %s\n' % filename)
   _RestoreFilters()
 
 
@@ -6047,7 +6068,8 @@ def ParseArguments(args):
                                                  'filter=',
                                                  'root=',
                                                  'linelength=',
-                                                 'extensions='])
+                                                 'extensions=',
+                                                 'stdstream'])
   except getopt.GetoptError:
     PrintUsage('Invalid arguments.')
 
@@ -6076,6 +6098,9 @@ def ParseArguments(args):
     elif opt == '--root':
       global _root
       _root = val
+    elif opt == '--stdstream':
+      global _std_stream
+      _std_stream = sys.stdout
     elif opt == '--linelength':
       global _line_length
       try:
